@@ -1,8 +1,15 @@
 services:
-  app:
-    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/learn-react:latest
+  angular:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: layar-tancap
+    restart: unless-stopped
     ports:
-      - "3000:80"
-    restart: always
-
-# On your server, Cloudflare Tunnel should point to localhost:3000
+      - "4400:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

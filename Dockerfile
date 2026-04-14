@@ -8,6 +8,7 @@ RUN npm run build
 
 # Production stage
 FROM nginx:stable-alpine
+RUN apk add --no-cache curl
 COPY --from=build /app/dist /usr/share/nginx/html
 # If you use React Router, you need this Nginx config to handle SPA routing:
 COPY nginx.conf /etc/nginx/conf.d/default.conf

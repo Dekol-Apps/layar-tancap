@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    name: Build and run
+    runs-on: [self-hosted, x200-ghaction]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          clean: true
+
+      - name: Set lowercase repository name
+        id: repo_meta
+        run: |
+          echo "repo_lowercase=$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Validate Docker Compose
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "docker CLI is required."
+            exit 1
+          fi
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "docker compose v2 is required."
+            exit 1
+          fi
+
+      - name: Build and run container
+        run: |
+          set -euo pipefail
+          docker compose -p "${{ steps.repo_meta.outputs.repo_lowercase }}" -f docker-compose.yml up -d --build
+          docker compose -p "${{ steps.repo_meta.outputs.repo_lowercase }}" -f docker-compose.yml ps
+
+      - name: Wait for healthcheck
+        run: |
+          set -euo pipefail
+
+          for i in $(seq 1 12); do
+            status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' layar-tancap 2>/dev/null || echo "none")
+            echo "Health status: $status"
+
+            if [ "$status" = "healthy" ]; then
+              echo "Service is healthy"
+              exit 0
+            fi
+
+            if [ "$status" = "unhealthy" ]; then
+              echo "Service is unhealthy"
+              docker logs layar-tancap --tail=100 || true
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          echo "Timed out waiting for service healthcheck"
+          docker logs layar-tancap --tail=100 || true
+          exit 1
+
+      - name: Verify running service
+        run: |
+          set -euo pipefail
+          docker ps --filter "name=layar-tancap" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+          docker compose -p "${{ steps.repo_meta.outputs.repo_lowercase }}" -f docker-compose.yml ps
